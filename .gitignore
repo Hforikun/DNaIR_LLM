@@ -1,13 +1,7 @@
-# Git Ignore File
+# 忽略 Python 缓存
+__pycache__/
+*.py[cod]
 
-# AI Context
-.cobridge
-
-# .traerules
-.traerules
-
-# .cursorrules
-.cursorrules
-
-# GitHub Copilot Instructions
-.github/copilot-instructions.md
+# 忽略虚拟环境
+venv/
+.env
