@@ -4,11 +4,11 @@
 
 尽管DNaIR架构在算法层面实现了突破，但其本质上依然高度依赖于离散的商品ID（Item IDs）序列与显式的评分交互矩阵。这种基于协同过滤（Collaborative Filtering, CF）范式的纯ID表示方法缺乏深度的语义理解能力。当面临交互极其稀疏的冷启动长尾商品时，纯ID模型无法感知商品背后的深层属性与用户的真实自然语言意图，导致"去偏"过程往往只能通过被动地提升随机探索率来实现，而非基于商品真实价值的主动挖掘。为了彻底打破这一瓶颈，将大语言模型（Large Language Models, LLMs）的深层语义表征能力与DNaIR的强化学习决策架构进行深度耦合，构建一个"LLM + DNaIR"的多维增强框架，成为了当前推荐系统领域极具前瞻性的创新方向。这一创新旨在将离散的ID状态转化为连贯的自然语言意图轨迹，利用互信息最大化（Mutual Information Maximization）与跨视图对齐（Cross-View Alignment）技术，实现推荐系统对长尾商品的高质量主动识别。
 
-从当前的理论构想阶段，推进至最终形成一篇严谨学术论文，需要跨越理论建模、数据工程、底层架构重构、系统性实验验证以及学术叙事构建等多个科研阶段。本报告将拆解从概念萌芽到论文定稿期间所有执行的科研工作与技术细节。
+从当前的理论构想阶段，推进至最终形成一篇具备顶级学术会议（如SIGIR, KDD, WWW, TOIS）发表水准的严谨学术论文，需要跨越理论建模、数据工程、底层架构重构、系统性实验验证以及学术叙事构建等多个极其复杂的工程与科研阶段。本报告将以学术界最高标准，详尽无遗地拆解从概念萌芽到论文定稿期间所有必须执行的科研工作与技术细节。
 
 ---
 
-## 第一阶段：理论框架升级与严谨数学建模 已完成
+## 第一阶段：理论框架升级与严谨数学建模 ✅ 已完成
 
 > **阶段定位：** 为整篇论文奠定无懈可击的纯数学地基。所有公式已通过理论推导验证，并在后续阶段逐一落地为可执行代码。
 
@@ -22,37 +22,27 @@
 ### 2. 构建双视图前向融合公式
 引入可学习的投影矩阵 $W_{ID} \in \mathbb{R}^{d_h \times d_{ID}}$ 与 $W_{sem} \in \mathbb{R}^{d_h \times d_{sem}}$，将异构特征映射至统一的 $d_h$ 维隐式空间，避免高维语义信号淹没稀疏 ID 信号的维度崩溃：
 
-$$
-z_{ID}(s_t) = \sigma(W_{ID} e_{ID}(s_t) + b_{ID}), \quad z_{sem}(s_t) = \sigma(W_{sem} e_{sem}(s_t) + b_{sem})
-$$
+$$z_{ID}(s_t) = \sigma(W_{ID} e_{ID}(s_t) + b_{ID}), \quad z_{sem}(s_t) = \sigma(W_{sem} e_{sem}(s_t) + b_{sem})$$
 
-$$
-\tilde{s}_t = z_{ID}(s_t) \oplus z_{sem}(s_t) \in \mathbb{R}^{2d_h}
-$$
+$$\tilde{s}_t = z_{ID}(s_t) \oplus z_{sem}(s_t) \in \mathbb{R}^{2d_h}$$
 
 ### 3. 推导跨视图对齐损失函数（InfoNCE Loss）
 引入对比学习中的 InfoNCE 损失函数作为互信息的易处理下界，强制同一状态的 CF 视图与语义视图在潜在空间中相互靠拢：
 
-$$
-\mathcal{L}_{align}=\frac{1}{2N}\sum_{i=1}^N(\mathcal{L}_{ID \rightarrow sem}^{(i)}+\mathcal{L}_{sem \rightarrow ID}^{(i)})
-$$
+$$\mathcal{L}_{align}=\frac{1}{2N}\sum_{i=1}^N(\mathcal{L}_{ID \rightarrow sem}^{(i)}+\mathcal{L}_{sem \rightarrow ID}^{(i)})$$
 
 其中温度系数 $\tau$ 控制网络对困难负样本的惩罚力度。
 
 ### 4. 升级质量感知对偶奖励函数
 废除原版基于历史评分的贝叶斯推断质量因子 $\psi_a$（长尾商品无评分导致逻辑悖论），引入 LLM 驱动的零样本语义质量分数：
 
-$$
-\hat{\psi}_a = P_{LLM}(\text{High Quality} \mid Prompt(\mathcal{T}_a))
-$$
+$$\hat{\psi}_a = P_{LLM}(\text{High Quality} \mid Prompt(\mathcal{T}_a))$$
 
-$$
-R_{new}(\tilde{s}_t, \tilde{a}) = \text{sim}(\tilde{s}_t, \tilde{a}) + \beta \cdot \hat{\psi}_a \cdot r_{nov}(a)
-$$
+$$R_{new}(\tilde{s}_t, \tilde{a}) = \text{sim}(\tilde{s}_t, \tilde{a}) + \beta \cdot \hat{\psi}_a \cdot r_{nov}(a)$$
 
 ---
 
-## 第二阶段：异构数据集工程与语义处理管道搭建 已完成
+## 第二阶段：异构数据集工程与语义处理管道搭建 ✅ 已完成
 
 > **阶段定位：** 构建从原始数据到高性能向量底座的完整离线 ETL 管道。所有脚本位于 `scripts/data_prep/` 目录。
 
@@ -105,7 +95,7 @@ DeepSeek-Chat 对 1682 部电影逐一进行零样本质量评估，输出 $\hat
 
 ---
 
-## 第三阶段：核心算法重构与底层代码实现 已完成
+## 第三阶段：核心算法重构与底层代码实现 ✅ 已完成
 
 > **阶段定位：** 对原版 DNaIR 代码进行脱胎换骨的改造，核心文件位于 `model/` 与 `train.py`。
 
@@ -125,7 +115,7 @@ State (item_id sequence)
                                                           FAISS index.search() → Top-K item IDs
 ```
 
-**三大隐患修复：**
+**三大致命隐患修复：**
 
 | 隐患 | 修复方案 |
 |:---|:---|
@@ -143,9 +133,7 @@ State (item_id sequence)
 ### 12. 实现联合损失反向传播
 修正原版致命数学错误（直接相加两个 768D 向量无物理意义），重新定义标量 Q 值体系：
 
-$$
-Q(s, a) = \cos(f_{eval}(s), e_a), \quad L_{total} = L_{TD} + \lambda \cdot L_{InfoNCE}
-$$
+$$Q(s, a) = \text{cosine\_sim}(f_{eval}(s), e_a), \quad L_{total} = L_{TD} + \lambda \cdot L_{InfoNCE}$$
 
 > macOS ARM 工程修复：`learn()` 中 max-Q 估计改用 NumPy 暴力点积，规避 `libomp.dylib` 冲突。
 
@@ -154,9 +142,7 @@ $$
 ### 13. 改写多样性感知动作生成器（Hybrid Similarity DSAG）
 引入动态加权混合相似度，打破冷启动：
 
-$$
-S_{hyb}(i_{last}, i_{cand}) = \alpha \cdot S_{cf} + (1 - \alpha) \cdot S_{sem}
-$$
+$$Sim_{Hybrid}(\text{last\_item}, \text{cand}) = \alpha \cdot Sim_{CF} + (1 - \alpha) \cdot Sim_{Semantic}$$
 
 **突破验证：** 纯冷启动 Item（CF 矩阵无记录）在 $\alpha=0.5$ 下成功夺得候选集席位。
 
@@ -174,7 +160,7 @@ $$
 
 ---
 
-## 第四阶段：实验协议设计与多维评价指标体系 已完成
+## 第四阶段：实验协议设计与多维评价指标体系
 
 > **阶段定位：** 构建一套涵盖准确性、多样性、去偏能力以及长期用户满意度的多维评价矩阵（4D Evaluation Matrix），并选择最具代表性的前沿基线模型进行全面对抗。
 
@@ -202,7 +188,7 @@ $$
 
 > **阶段定位：** 在多数据集上训练模型并获取毫无破绽的实验数据。核心指导思想："**吃透小数据集的秒级迭代红利，稳拿大数据集的泛化证明**"。
 
-### 学术逻辑避坑指南：致命的"超参数泛化陷阱"
+### 🛑 学术逻辑避坑指南：致命的"超参数泛化陷阱"
 
 在过往的许多研究中，极易犯下一个致命的工程错误：在小型密集数据集（如 ML-100K）上进行网格搜索（Grid Search），找到了一组"完美"的超参数（如对比损失权重 $\lambda_{cl}$、探索率 $\epsilon$、LLM 质量分权重 $\beta$ 等），然后直接带着这组参数去跑极度稀疏或规模庞大的目标数据集（如 FilmTrust 或 ML-1M）。
 
@@ -212,7 +198,7 @@ $$
 
 ### 终极落地执行路线 (The Final Playbook)
 
-#### Phase A：在 ML-100K 上"排雷与练兵"（预演决战）
+#### 🎯 Phase A：在 ML-100K 上"排雷与练兵"（预演决战）
 
 **目标：在低试错成本的环境中，完成所有的外围建设与初步概念验证（Proof of Concept）。**
 
@@ -222,14 +208,14 @@ $$
    - 初步超参数搜索，证明 "LLM + RL" 能够打败 Baseline。
    - **执行流形可视化：** 利用 t-SNE / PCA 降维技术，绘制高维特征空间散点簇。直观展示原本在纯 ID 空间中孤立的冷门商品，在加入 InfoNCE 和 LLM 语义后如何被拉入热门用户意图簇（在 100K 上画图最快、最清晰，防止百万级数据密恐糊图）。
 
-#### Phase B：数据扩容与弹药准备（随时异步执行）
+#### 🧊 Phase B：数据扩容与弹药准备（随时异步执行）
 
 **目标：准备"一大一小，一密一稀"的核心弹药库，满足顶会的鲁棒性考核。**
 
 1. **规模担当 (ML-1M)：** 下载 MovieLens 1M（百万级交互）。利用已打通的处理管道，针对性调用 DeepSeek API 获取剧情文本，用 BGE 生成 `.npy` 语义矩阵。
 2. **极度稀疏性担当 (FilmTrust)：** 密度仅 1.14%，是纯 ID 协同过滤的"坟墓"。抓取电影实体的元数据并转化为向量。LLM 语义将产生绝对的降维打击。
 
-#### Phase C：决战新战场（主表数据产出）
+#### ⚔️ Phase C：决战新战场（主表数据产出）
 
 **目标：在目标数据集上榨干模型潜力，产出毫无破绽的 T-Test 验证数据。**
 
