@@ -1,5 +1,6 @@
 import os
 import random
+import threading
 import numpy as np
 import torch
 import faiss
@@ -20,6 +21,7 @@ _faiss_index = None
 _device = None
 _head_items_set = set()
 _tail_items_set = set()
+_lock = threading.Lock()
 _cold_items_set = set()
 
 
@@ -168,39 +170,39 @@ def recommender(ep_user, train_df, test_df, train_dict,
     interaction_num = setInteraction(env, agent, ep_user, train_df, args.obswindow)
     if interaction_num <= 20:
         return
-    else:
-        global user_num
-        user_num += 1
 
     trainAgent(agent, args.step_max)
     rec_list = recommend_offpolicy(env, agent, last_obs)
     test_set = test_df.loc[test_df['user_id'] == ep_user, 'item_id'].tolist()
 
-    global precision, ndcg, novelty, coverage, ils, interdiv, recall, ndcg_cold, recall_cold, rec_lists_all
-    
-    # ── Accuracy Metrics ──
-    precision.append(len(set(rec_list) & set(test_set)) / (len(rec_list)))
-    ndcg.append(ndcg_metric({ep_user: rec_list}, {ep_user: test_set}))
-    recall.append(recall_metric({ep_user: rec_list}, {ep_user: test_set}))
+    # ── Thread-safe metric collection ──
+    with _lock:
+        global user_num
+        user_num += 1
 
-    # ── Strict Cold-Start Subset Metrics ──
-    cold_test_set = list(set(test_set) & _cold_items_set)
-    if cold_test_set:
-        # Filter the recommendation list to only cold items to see how well they rank
-        cold_rec_list = [item for item in rec_list if item in _cold_items_set]
-        if cold_rec_list:
-            ndcg_cold.append(ndcg_metric({ep_user: cold_rec_list}, {ep_user: cold_test_set}))
-        else:
-            ndcg_cold.append(0.0)
-        # Recall uses the full top-k list but assesses against cold ground-truths
-        recall_cold.append(recall_metric({ep_user: rec_list}, {ep_user: cold_test_set}))
+        # ── Accuracy Metrics ──
+        precision.append(len(set(rec_list) & set(test_set)) / (len(rec_list)))
+        ndcg.append(ndcg_metric({ep_user: rec_list}, {ep_user: test_set}))
+        recall.append(recall_metric({ep_user: rec_list}, {ep_user: test_set}))
 
-    # ── Debiasing & Diversity Metrics ──
-    novelty.append(novelty_metric(rec_list, env.item_pop_dict))
-    coverage.extend(rec_list)
-    ils.append(ils_metric(rec_list, env.item_sim_matrix))
-    interdiv.append(rec_list)
-    rec_lists_all.append(rec_list)
+        # ── Strict Cold-Start Subset Metrics ──
+        cold_test_set = list(set(test_set) & _cold_items_set)
+        if cold_test_set:
+            cold_rec_list = [item for item in rec_list if item in _cold_items_set]
+            if cold_rec_list:
+                ndcg_cold.append(ndcg_metric({ep_user: cold_rec_list}, {ep_user: cold_test_set}))
+            else:
+                ndcg_cold.append(0.0)
+            recall_cold.append(recall_metric({ep_user: rec_list}, {ep_user: cold_test_set}))
+
+        # ── Debiasing & Diversity Metrics ──
+        novelty.append(novelty_metric(rec_list, env.item_pop_dict))
+        coverage.extend(rec_list)
+        ils.append(ils_metric(rec_list, env.item_sim_matrix))
+        interdiv.append(rec_list)
+        rec_lists_all.append(rec_list)
+
+        print(f"  ✅ User {ep_user} done (total: {user_num})")
 
 
 def train_dqn(train_df, test_df,
@@ -246,11 +248,14 @@ def train_dqn(train_df, test_df,
         print(f"[LLM Reward] WARNING: {llm_quality_path} not found, using original quality_dict")
 
     # 5. Compute Item Sets for Evaluation (Head/Tail/Cold)
-    pop_items = sorted(item_pop_dict.items(), key=lambda x: x[1], reverse=True)
-    num_head = int(len(pop_items) * 0.2)  # 20/80 Pareto Rule from FairLRM
-    _head_items_set = set([int(x[0]) for x in pop_items[:num_head]])
-    _tail_items_set = set([int(x[0]) for x in pop_items[num_head:]])
-    _cold_items_set = set([int(k) for k, v in item_pop_dict.items() if v <= 5])
+    #    CRITICAL: item_pop_dict contains Min-Max NORMALIZED values in [0,1].
+    #    We must use RAW interaction counts from train_df for Head/Tail/Cold splits.
+    raw_item_counts = train_df['item_id'].value_counts().to_dict()  # {item_id: raw_count}
+    raw_items_sorted = sorted(raw_item_counts.items(), key=lambda x: x[1], reverse=True)
+    num_head = int(len(raw_items_sorted) * 0.2)  # 20/80 Pareto Rule
+    _head_items_set = set([int(x[0]) for x in raw_items_sorted[:num_head]])
+    _tail_items_set = set([int(x[0]) for x in raw_items_sorted[num_head:]])
+    _cold_items_set = set([int(k) for k, v in raw_item_counts.items() if v <= 5])
     print(f"[Items] Total: {max_item_id} | Head: {len(_head_items_set)} | Tail: {len(_tail_items_set)} | Cold(<=5): {len(_cold_items_set)}")
 
     # 6. Build per-user training dict
